@@ -10,6 +10,10 @@ service PublicDataService {
   rpc GetLocations(GetLocationsRequest) returns (GetLocationsResponse);
   rpc GetDistricts(GetDistrictsRequest) returns (GetDistrictsResponse);
   rpc GetWarnings(GetWarningsRequest) returns (GetWarningsResponse);
+  rpc GetDailyStationObservations(GetDailyStationObservationsRequest) returns (GetDailyStationObservationsResponse);
+  rpc GetFireDangerMap(GetFireDangerMapRequest) returns (GetFireDangerMapResponse);
+  rpc GetModelMap(GetModelMapRequest) returns (GetModelMapResponse);
+  rpc GetModelWindField(GetModelWindFieldRequest) returns (GetModelWindFieldResponse);
 }
 message PingRequest {}
 message PingResponse {
@@ -101,4 +105,118 @@ message Warning {
   google.protobuf.Timestamp ends_at = 6;
   google.protobuf.Timestamp reported_at = 7;
   string source_json = 8;
+}
+// One station-month; the adapter builds the zero-padded directory and unpadded
+// filename month from `month`.
+message GetDailyStationObservationsRequest {
+  uint32 station_id = 1;
+  uint32 year = 2;
+  // 1-12.
+  uint32 month = 3;
+}
+message GetDailyStationObservationsResponse {
+  SourceMetadata metadata = 1;
+  SurfaceStation station = 2;
+  // One row per calendar day, including days not yet observed.
+  repeated DailyStationObservation observations = 3;
+}
+message SurfaceStation {
+  uint32 station_id = 1;
+  string name = 2;
+  optional double latitude = 3;
+  optional double longitude = 4;
+  optional double elevation_meters = 5;
+  // Station fields of the source document, excluding `data`.
+  string source_json = 6;
+}
+// Missing/null measurements are absent, so future days carry only `day`.
+message DailyStationObservation {
+  // UTC midnight starting the observed day.
+  google.protobuf.Timestamp day = 1;
+  optional double mean_temperature_celsius = 2;
+  optional double maximum_temperature_celsius = 3;
+  optional double minimum_temperature_celsius = 4;
+  optional double precipitation_millimeters = 5;
+  // The website does not label the next three units; they are inferred from
+  // observed magnitudes.
+  optional double mean_relative_humidity_percent = 6;
+  optional double mean_sea_level_pressure_hectopascals = 7;
+  optional double mean_wind_speed_meters_per_second = 8;
+  string source_json = 9;
+}
+// WGS84 extent the website uses to place a map frame.
+message GeoBounds {
+  double south_latitude = 1;
+  double west_longitude = 2;
+  double north_latitude = 3;
+  double east_longitude = 4;
+}
+// Transparent PNG overlay. Pixel colours are legend classes, not measurements.
+message MapFrame {
+  google.protobuf.Timestamp valid_at = 1;
+  bytes png = 2;
+  GeoBounds bounds = 3;
+}
+// LSA SAF products for mainland Portugal.
+enum FireDangerLayer {
+  FIRE_DANGER_LAYER_UNSPECIFIED = 0;
+  FIRE_DANGER_LAYER_FIRE_WEATHER_INDEX = 1;
+  FIRE_DANGER_LAYER_INITIAL_SPREAD_INDEX = 2;
+  FIRE_DANGER_LAYER_BUILDUP_INDEX = 3;
+  FIRE_DANGER_LAYER_FINE_FUEL_MOISTURE_CODE = 4;
+  // Probability that a detected fire reaches 2000 GJ of released energy.
+  FIRE_DANGER_LAYER_EXTREME_FIRE_PROBABILITY = 5;
+  FIRE_DANGER_LAYER_FIRE_RISK_MAP = 6;
+}
+// Daily frames, published from about the previous UTC day to five days ahead.
+message GetFireDangerMapRequest {
+  FireDangerLayer layer = 1;
+  // Must be UTC midnight.
+  google.protobuf.Timestamp valid_at = 2;
+}
+message GetFireDangerMapResponse {
+  SourceMetadata metadata = 1;
+  MapFrame frame = 2;
+}
+// ECMWF fields over Portugal, the Azores, Madeira and the surrounding Atlantic.
+enum ModelMapLayer {
+  MODEL_MAP_LAYER_UNSPECIFIED = 0;
+  MODEL_MAP_LAYER_TEMPERATURE_2M = 1;
+  MODEL_MAP_LAYER_MEAN_SEA_LEVEL_PRESSURE = 2;
+  MODEL_MAP_LAYER_PRECIPITATION = 3;
+  MODEL_MAP_LAYER_WIND_SPEED_10M = 4;
+}
+// Hourly frames, published from about 00:00 UTC yesterday to 48 hours ahead.
+message GetModelMapRequest {
+  ModelMapLayer layer = 1;
+  // Must be a whole UTC hour.
+  google.protobuf.Timestamp valid_at = 2;
+}
+message GetModelMapResponse {
+  SourceMetadata metadata = 1;
+  MapFrame frame = 2;
+}
+// Same availability as GetModelMap.
+message GetModelWindFieldRequest {
+  // Must be a whole UTC hour.
+  google.protobuf.Timestamp valid_at = 1;
+}
+message GetModelWindFieldResponse {
+  SourceMetadata metadata = 1;
+  WindGrid grid = 2;
+}
+// ECMWF 10 m wind on a regular latitude/longitude grid. Values are row-major,
+// starting at the north-west corner, stepping east then south; missing points are NaN.
+message WindGrid {
+  google.protobuf.Timestamp valid_at = 1;
+  uint32 columns = 2;
+  uint32 rows = 3;
+  double west_longitude = 4;
+  double north_latitude = 5;
+  double east_longitude = 6;
+  double south_latitude = 7;
+  double longitude_step_degrees = 8;
+  double latitude_step_degrees = 9;
+  repeated double eastward_meters_per_second = 10;
+  repeated double northward_meters_per_second = 11;
 }
